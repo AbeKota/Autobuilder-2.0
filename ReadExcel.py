@@ -106,9 +106,9 @@ def read_input_table(wb,excel_index):
 
     while ws_input[panel_num_col + str(cur_tower_row)].value is not None:
         # Read tower number
-        cur_tower_num = ws_input[panel_bracing_col + str(cur_tower_row)].value
+        cur_tower_num = int(ws_input[panel_bracing_col + str(cur_tower_row)].value)
         # Read tower x width
-        x_width = ws_input[panel_bracing_col + str(cur_tower_row + 1)].value
+        x_width = float(ws_input[panel_bracing_col + str(cur_tower_row + 1)].value)
         # Read tower y width
         y_width = ws_input[panel_bracing_col + str(cur_tower_row + 2)].value
         # Read panels
