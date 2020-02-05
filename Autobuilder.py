@@ -768,7 +768,7 @@ print('--------------------------------------------------------\n')
 
 #Read in the excel workbook
 print("\nReading Excel spreadsheet...")
-wb = load_workbook(r"C:\Users\kotab\Documents\Seismic\CR TEST\CR TEST.xlsm", data_only=True, read_only=True)
+wb = load_workbook(r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 3, 2020\Top.xlsm", data_only=True)
 ExcelIndex = ReadExcel.get_excel_indices(wb, 'A', 'B', 2)
 
 # Sections = ReadExcel.get_properties(wb,ExcelIndex,'Section')
@@ -783,15 +783,20 @@ SaveLoc = ExcelIndex['Save location']
 TimeHistoryLoc1 = ExcelIndex['Time history location 1']
 TimeHistoryLoc2 = ExcelIndex['Time history location 2']
 RunGMs = ExcelIndex['Run GMs']
+
 if RunGMs == 'No':
     RunGMs = False
 elif RunGMs == 'Yes':
     RunGMs = True
 CRElevs = ExcelIndex['CR elevs']
-CRElevs = CRElevs.split(',')
+if type(CRElevs) == type('string') and ',' in CRElevs:
+    CRElevs = CRElevs.split(',')
+else:
+    CRElevs = [CRElevs]
+
 CRElevs = [float(i) for i in CRElevs]
 
-model_loc = r"C:\Users\kotab\Documents\Seismic\CR TEST\L Shape Double Columns.sdb"
+model_loc = r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 3, 2020\20200203 Top.sdb"
 
 print('\nInitializing SAP2000 model...')
 # create SAP2000 object
