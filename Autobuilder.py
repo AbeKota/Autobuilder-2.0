@@ -760,10 +760,14 @@ def write_to_excel(wb_results, filepath, all_costs, all_results, all_CRs, run_GM
 
 #----START-----------------------------------------------------START----------------------------------------------------#
 
-ModelLocations = []
-WBLocations = []
+ModelLocations = [r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 8, 2020\0Shear.sdb", r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 8, 2020\6Shear.sdb" ]
+WBLocations = [r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 8, 2020\02-08-2020 0Shear.xlsm", r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 8, 2020\02-08-2020 6Shear.xlsm"]
 
-for model_loc, wb_loc in ModelLocations, WBLocations:
+i = 0
+
+while i < len(ModelLocations):
+    model_loc = ModelLocations[i]
+    wb_loc = WBLocations[i]
     print('\n--------------------------------------------------------')
     print('Autobuilder by University of Toronto Seismic Design Team')
     print('--------------------------------------------------------\n')
@@ -1084,4 +1088,5 @@ for model_loc, wb_loc in ModelLocations, WBLocations:
     #plt.show(block=True)
     plt.close('all')
 
+    i += 1
 
