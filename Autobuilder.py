@@ -760,325 +760,328 @@ def write_to_excel(wb_results, filepath, all_costs, all_results, all_CRs, run_GM
 
 #----START-----------------------------------------------------START----------------------------------------------------#
 
+ModelLocations = []
+WBLocations = []
+
+for model_loc, wb_loc in ModelLocations, WBLocations:
+    print('\n--------------------------------------------------------')
+    print('Autobuilder by University of Toronto Seismic Design Team')
+    print('--------------------------------------------------------\n')
+
+    #Read in the excel workbook
+    print("\nReading Excel spreadsheet...")
+    wb = load_workbook(wb_loc, data_only=True)
+    ExcelIndex = ReadExcel.get_excel_indices(wb, 'A', 'B', 2)
+
+    # Sections = ReadExcel.get_properties(wb,ExcelIndex,'Section')
+    # Materials = ReadExcel.get_properties(wb,ExcelIndex,'Material')
+    Bracing = ReadExcel.get_bracing(wb,ExcelIndex,'Bracing')
+    # FloorPlans = ReadExcel.get_floor_plans(wb,ExcelIndex)
+    # FloorBracing = ReadExcel.get_bracing(wb,ExcelIndex,'Floor Bracing')
+    # SpaceBracing = ReadExcel.get_bracing(wb,ExcelIndex,'Space Bracing')
+    Panels = ReadExcel.get_panels(wb, ExcelIndex)
+    AllTowers = ReadExcel.read_input_table(wb, ExcelIndex)
+    SaveLoc = ExcelIndex['Save location']
+    TimeHistoryLoc1 = ExcelIndex['Time history location 1']
+    TimeHistoryLoc2 = ExcelIndex['Time history location 2']
+    RunGMs = ExcelIndex['Run GMs']
+
+    if RunGMs == 'No':
+        RunGMs = False
+    elif RunGMs == 'Yes':
+        RunGMs = True
+    CRElevs = ExcelIndex['CR elevs']
+    if type(CRElevs) == type('string') and ',' in CRElevs:
+        CRElevs = CRElevs.split(',')
+    else:
+        CRElevs = [CRElevs]
+
+    CRElevs = [float(i) for i in CRElevs]
 
 
-print('\n--------------------------------------------------------')
-print('Autobuilder by University of Toronto Seismic Design Team')
-print('--------------------------------------------------------\n')
+    print('\nInitializing SAP2000 model...')
+    # create SAP2000 object
+    SapObject = win32com.client.Dispatch('SAP2000v15.SapObject')
+    # start SAP2000
+    SapObject.ApplicationStart()
+    # create SapModel Object
+    SapModel = SapObject.SapModel
+    # initialize model
+    SapModel.InitializeNewModel()
+    # open model
+    ret = SapModel.File.OpenFile(model_loc)
 
-#Read in the excel workbook
-print("\nReading Excel spreadsheet...")
-wb = load_workbook(r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 3, 2020\Top.xlsm", data_only=True)
-ExcelIndex = ReadExcel.get_excel_indices(wb, 'A', 'B', 2)
-
-# Sections = ReadExcel.get_properties(wb,ExcelIndex,'Section')
-# Materials = ReadExcel.get_properties(wb,ExcelIndex,'Material')
-Bracing = ReadExcel.get_bracing(wb,ExcelIndex,'Bracing')
-# FloorPlans = ReadExcel.get_floor_plans(wb,ExcelIndex)
-# FloorBracing = ReadExcel.get_bracing(wb,ExcelIndex,'Floor Bracing')
-# SpaceBracing = ReadExcel.get_bracing(wb,ExcelIndex,'Space Bracing')
-Panels = ReadExcel.get_panels(wb, ExcelIndex)
-AllTowers = ReadExcel.read_input_table(wb, ExcelIndex)
-SaveLoc = ExcelIndex['Save location']
-TimeHistoryLoc1 = ExcelIndex['Time history location 1']
-TimeHistoryLoc2 = ExcelIndex['Time history location 2']
-RunGMs = ExcelIndex['Run GMs']
-
-if RunGMs == 'No':
-    RunGMs = False
-elif RunGMs == 'Yes':
-    RunGMs = True
-CRElevs = ExcelIndex['CR elevs']
-if type(CRElevs) == type('string') and ',' in CRElevs:
-    CRElevs = CRElevs.split(',')
-else:
-    CRElevs = [CRElevs]
-
-CRElevs = [float(i) for i in CRElevs]
-
-model_loc = r"C:\Users\kotab\Documents\Seismic\Autobuilder Run Feb 3, 2020\20200203 Top.sdb"
-
-print('\nInitializing SAP2000 model...')
-# create SAP2000 object
-SapObject = win32com.client.Dispatch('SAP2000v15.SapObject')
-# start SAP2000
-SapObject.ApplicationStart()
-# create SapModel Object
-SapModel = SapObject.SapModel
-# initialize model
-SapModel.InitializeNewModel()
-# open model
-ret = SapModel.File.OpenFile(model_loc)
-
-# For manually built models, some of the joint locations can be off by very small amounts (e.g. 1e-6 m).
-# To fix this, round all coordinates down to 6 decimal places
-print('Rounding coordinates...')
-# Unlock model
-SapModel.SetModelIsLocked(False)
-[ret, NumberPoints, AllPointNames] = SapModel.PointObj.GetNameList()
-for PointName in AllPointNames:
-    [ret, x, y, z] = SapModel.PointObj.GetCoordCartesian(PointName, 0, 0, 0)
-    x = round(x,6)
-    y = round(y,6)
-    z = round(z,6)
-    ret = SapModel.EditPoint.ChangeCoordinates_1(PointName, x, y, z, True)
-    if ret != 0:
-        print('ERROR rounding coordinates of point ' + PointName)
-
-'''
-# Define new materials
-print("\nDefining materials...")
-N_m_C = 10
-SapModel.SetPresentUnits(N_m_C)
-for Material, MatProps in Materials.items():
-    MatName = MatProps['Name']
-    MatType = MatProps['Material type']
-    MatWeight = MatProps['Weight per volume']
-    MatE = MatProps['Elastic modulus']
-    MatPois = MatProps['Poisson\'s ratio']
-    MatTherm = MatProps['Thermal coefficient']
-    #Create material type
-    ret = SapModel.PropMaterial.SetMaterial(MatName, MatType)
-    if ret != 0:
-        print('ERROR creating material type')
-    #Set isotropic material proprties
-    ret = SapModel.PropMaterial.SetMPIsotropic(MatName, MatE, MatPois, MatTherm)
-    if ret != 0:
-        print('ERROR setting material properties')
-    #Set unit weight
-    ret = SapModel.PropMaterial.SetWeightAndMass(MatName, 1, MatWeight)
-    if ret != 0:
-        print('ERROR setting material unit weight')
-
-#Define new sections
-print('Defining sections...')
-kip_in_F = 3
-SapModel.SetPresentUnits(kip_in_F)
-for Section, SecProps in Sections.items():
-    SecName = SecProps['Name']
-    SecArea = SecProps['Area']
-    SecTors = SecProps['Torsional constant']
-    SecIn3 = SecProps['Moment of inertia about 3 axis']
-    SecIn2 = SecProps['Moment of inertia about 2 axis']
-    SecSh2 = SecProps['Shear area in 2 direction']
-    SecSh3 = SecProps['Shear area in 3 direction']
-    SecMod3 = SecProps['Section modulus about 3 axis']
-    SecMod2 = SecProps['Section modulus about 2 axis']
-    SecPlMod3 = SecProps['Plastic modulus about 3 axis']
-    SecPlMod2 = SecProps['Plastic modulus about 2 axis']
-    SecRadGy3 = SecProps['Radius of gyration about 3 axis']
-    SecRadGy2 = SecProps['Radius of gyration about 2 axis']
-    SecMat = SecProps['Material']
-    #Create section property
-    ret = SapModel.PropFrame.SetGeneral(SecName, SecMat, 0.1, 0.1, SecArea, SecSh2, SecSh3, SecTors, SecIn2, SecIn3, SecMod2, SecMod3, SecPlMod2, SecPlMod3, SecRadGy2, SecRadGy3, -1)
-    if ret != 0:
-        print('ERROR creating section property ' + SecName)
-'''
-
-AllCosts = []
-AllResults = []
-AllCRs = []
-'AllResults = [max_acc, max_disp, total_weight, period, basesh, CrX, CrY]. AllResults list is a list of lists. Each list is for a different GM'
-TowerNum = 1
-ComputeTimes = []
-
-# Define load cases
-'''
-gm1_Steps = ExcelIndex['GM1 time steps']
-gm1_Intervals = ExcelIndex['GM1 time interval']
-gm2_Steps = ExcelIndex['GM2 time steps']
-gm2_Intervals = ExcelIndex['GM2 time interval']
-SapModel = define_loading(SapModel, TimeHistoryLoc1, TimeHistoryLoc2, gm1_Steps, gm1_Intervals,
-                          gm2_Steps, gm2_Intervals, SaveLoc)
-'''
-
-# Start scatter plot of FABI
-plt.ion()
-fig = plt.figure()
-ax = plt.subplot(1,1,1)
-ax.set_xlabel('Tower Number')
-if RunGMs:
-    ax.set_ylabel('Total Cost')
-elif not RunGMs:
-    ax.set_ylabel('Period')
-xdata = []
-ydata = []
-ax.plot(xdata, ydata, 'ro', markersize=6)
-plt.grid(True)
-
-plt.show(block=False)
-
-# Initialize results spreadsheet
-Filepath = SaveLoc + '/Results.xlsx'
-WbResults = openpyxl.Workbook()
-WbResults.save(Filepath)
-
-# Build all towers defined in spreadsheet
-LastTower = None
-MembersAddedLast = []
-EliminatedMembers = []
-for Tower in AllTowers:
-    MembersAdded = []
-    #Unlock model
-    SapModel.SetModelIsLocked(False)
-
-    StartTime = time.time()
-    print('\nBuilding tower number ' + str(TowerNum))
-    print('-------------------------')
-
-    # Delete all members within the plans and build correct bracing scheme
-    kip_in_F = 3
-    SapModel.SetPresentUnits(kip_in_F)
-
-    # Get list of members to not delete
-    MembersToKeep = []
-    '''
-    ret = SapModel.SelectObj.Group('MEMBERS TO KEEP')
-    if ret == 0:
-        [ret, NumberItems, ObjectTypes, ObjectNames] = SapModel.SelectObj.GetSelected()
-        SapModel.SelectObj.ClearSelection()
-    i = 0
-    for Object in ObjectNames:
-        if ObjectTypes[i] == 3:
-            MembersToKeep.append(Object)
-        i += 1
-    '''
-    if len(MembersAddedLast) != 0: #And the configuration is the same as the last tower
-        print('Deleting members created in last iteration...')
-        SapModel, MembersDeleted = delete_within_panel(SapModel, Panel, MembersToKeep, MembersAddedLast)
-
-    for PanelNum in Tower.panels:
-        BracingNum = Tower.panels[PanelNum]
-        BracingScheme = Bracing[BracingNum - 1]
-        Panel = Panels[PanelNum - 1]
-        if len(MembersAddedLast) == 0: # or the configuration is different from the last tower
-            print('Deleting members within panel ' + str(PanelNum) + '...')
-            SapModel, MembersDeleted = delete_within_panel(SapModel, Panel, MembersToKeep)
-        print('Building bracing scheme within panel ' + str(PanelNum) + "...")
-        SapModel, MembersAddedPanel = build_bracing_in_panel(SapModel, Panel, BracingScheme)
-        MembersAdded.extend(MembersAddedPanel)
-
-    # Change the section properties of specified members
-    print('\nChanging section properties of specified members...')
-    for MemberToChange in Tower.members:
-        NewSecProp = Tower.members[MemberToChange]
-        print('Changed section of member ' + str(MemberToChange))
-        ret = SapModel.FrameObj.SetSection(str(MemberToChange), NewSecProp, 0)
-        if ret != 0 and MemberToChange in EliminatedMembers:
-            print('ERROR changing section of member ' + str(MemberToChange) + '. Member was previously eliminated.')
-        elif ret != 0:
-            print('ERROR changing section of member ' + str(MemberToChange))
-
-    # Set base nodes to fixed
-    SapModel = set_base_restraints(SapModel)
-
-    '''
-    # Join frame members if they are collinear and have the same section property. Prevents SAP2000 from indicating the model as unstable
-    # !!!!!!WARNING!!!!!! This does not check whether joints have masses assigned to them (SAP API is dumb and it's not working for some reason).
-    # Make sure that all nodes with masses have more than one frame member attached
-    NumOfFrameJoins = 0
-    [ret, NumberPoints, AllPointNames] = SapModel.PointObj.GetNameList()
-    print('\nDeleting unnecessary joints...')
-    for PointName in AllPointNames:
-        # Check joint load
-        [ret, NumberLoadAssigns, PointNameFromSAP, LoadPat, LCStep, CSys, F1, F2, F3, M1, M2, M3] = SapModel.PointObj.GetLoadForce(PointName)
-        if ret != 0:
-            print('ERROR getting load assignment at joint ' + PointName)
-        # Get joint connectivity
-        [ret, NumberItems, ObjectTypes, ObjectNames, PointNumber] = SapModel.PointObj.GetConnectivity(PointName)
-        if ret != 0:
-            print('ERROR getting connectivity of point ' + PointName)
-        # If all criteria met, delete joint
-        if NumberItems == 2 and ObjectTypes[0] == 2 and ObjectTypes[1] == 2 and NumberLoadAssigns == 0:
-            [ret, Frame1Section, SAuto] = SapModel.FrameObj.GetSection(ObjectNames[0])
-            [ret, Frame2Section, SAuto] = SapModel.FrameObj.GetSection(ObjectNames[1])
-            if Frame1Section == Frame2Section:
-                ret = SapModel.EditFrame.Join(ObjectNames[0], ObjectNames[1])
-                EliminatedMembers.append(ObjectNames[1])
-                if ret == 0:
-                    NumOfFrameJoins += 1
-    print('Joined ' + str(NumOfFrameJoins) + ' members')
-    '''
-
-    # Save the file
-    SapModel.File.Save(SaveLoc + '/Tower ' + str(TowerNum))
-    # Analyse tower and print results to spreadsheet
-    print('\nAnalyzing tower number ' + str(TowerNum))
-    print('-------------------------')
-    # Run analysis and get weight, displacement, and acceleration
-    # ret = SapModel.Analyze.SetSolverOption_1(0, 0, False)
-    AllResults.append(run_analysis(SapModel, RunGMs))
-    if RunGMs:
-        MaxAcc = AllResults[TowerNum-1][0][0]
-        MaxDisp = AllResults[TowerNum-1][0][1]
-        Weight = AllResults[TowerNum-1][0][2]
-        # Calculate model cost
-        Footprint = 144
-        TotalHeight = [60] # inches
-        TotalMass = [7.83] # kg
-        AllCosts.append(get_costs(MaxAcc, MaxDisp, Footprint, Weight, TotalMass, TotalHeight))
-    if not RunGMs:
-        AllCosts.append(['bldg cost not calculated', 'seismic cost not calculated'])
-    # Find centres of rigidity
-    SapModel.SetModelIsLocked(False)
-    AllCRs.append(get_CR(SapModel, CRElevs))
-    # Write results to Excel spreadsheet
-    write_to_excel(WbResults, Filepath, AllCosts, AllResults, AllCRs, RunGMs, TowerNum)
+    # For manually built models, some of the joint locations can be off by very small amounts (e.g. 1e-6 m).
+    # To fix this, round all coordinates down to 6 decimal places
+    print('Rounding coordinates...')
     # Unlock model
     SapModel.SetModelIsLocked(False)
+    [ret, NumberPoints, AllPointNames] = SapModel.PointObj.GetNameList()
+    for PointName in AllPointNames:
+        [ret, x, y, z] = SapModel.PointObj.GetCoordCartesian(PointName, 0, 0, 0)
+        x = round(x,6)
+        y = round(y,6)
+        z = round(z,6)
+        ret = SapModel.EditPoint.ChangeCoordinates_1(PointName, x, y, z, True)
+        if ret != 0:
+            print('ERROR rounding coordinates of point ' + PointName)
 
-    # Determine total time taken to build current tower
-    EndTime = time.time()
-    TimeToComputeTower = EndTime - StartTime
-    ComputeTimes.append(TimeToComputeTower)
-    AverageComputeTime = sum(ComputeTimes) / len(ComputeTimes)
-    ElapsedTime = sum(ComputeTimes)
-    EstimatedTimeRemaining = (len(AllTowers) - TowerNum) * AverageComputeTime
-    if EstimatedTimeRemaining <= 60:
-        TimeUnitEstTime = 'seconds'
-    elif EstimatedTimeRemaining > 60 and EstimatedTimeRemaining < 3600:
-        TimeUnitEstTime = 'minutes'
-        EstimatedTimeRemaining = EstimatedTimeRemaining / 60
-    else:
-        TimeUnitEstTime = 'hours'
-        EstimatedTimeRemaining = EstimatedTimeRemaining / 3600
+    '''
+    # Define new materials
+    print("\nDefining materials...")
+    N_m_C = 10
+    SapModel.SetPresentUnits(N_m_C)
+    for Material, MatProps in Materials.items():
+        MatName = MatProps['Name']
+        MatType = MatProps['Material type']
+        MatWeight = MatProps['Weight per volume']
+        MatE = MatProps['Elastic modulus']
+        MatPois = MatProps['Poisson\'s ratio']
+        MatTherm = MatProps['Thermal coefficient']
+        #Create material type
+        ret = SapModel.PropMaterial.SetMaterial(MatName, MatType)
+        if ret != 0:
+            print('ERROR creating material type')
+        #Set isotropic material proprties
+        ret = SapModel.PropMaterial.SetMPIsotropic(MatName, MatE, MatPois, MatTherm)
+        if ret != 0:
+            print('ERROR setting material properties')
+        #Set unit weight
+        ret = SapModel.PropMaterial.SetWeightAndMass(MatName, 1, MatWeight)
+        if ret != 0:
+            print('ERROR setting material unit weight')
+    
+    #Define new sections
+    print('Defining sections...')
+    kip_in_F = 3
+    SapModel.SetPresentUnits(kip_in_F)
+    for Section, SecProps in Sections.items():
+        SecName = SecProps['Name']
+        SecArea = SecProps['Area']
+        SecTors = SecProps['Torsional constant']
+        SecIn3 = SecProps['Moment of inertia about 3 axis']
+        SecIn2 = SecProps['Moment of inertia about 2 axis']
+        SecSh2 = SecProps['Shear area in 2 direction']
+        SecSh3 = SecProps['Shear area in 3 direction']
+        SecMod3 = SecProps['Section modulus about 3 axis']
+        SecMod2 = SecProps['Section modulus about 2 axis']
+        SecPlMod3 = SecProps['Plastic modulus about 3 axis']
+        SecPlMod2 = SecProps['Plastic modulus about 2 axis']
+        SecRadGy3 = SecProps['Radius of gyration about 3 axis']
+        SecRadGy2 = SecProps['Radius of gyration about 2 axis']
+        SecMat = SecProps['Material']
+        #Create section property
+        ret = SapModel.PropFrame.SetGeneral(SecName, SecMat, 0.1, 0.1, SecArea, SecSh2, SecSh3, SecTors, SecIn2, SecIn3, SecMod2, SecMod3, SecPlMod2, SecPlMod3, SecRadGy2, SecRadGy3, -1)
+        if ret != 0:
+            print('ERROR creating section property ' + SecName)
+    '''
 
-    if ElapsedTime <= 60:
-        TimeUnitElaTime = 'seconds'
-    elif ElapsedTime > 60 and ElapsedTime < 3600:
-        TimeUnitElaTime = 'minutes'
-        ElapsedTime = ElapsedTime / 60
-    else:
-        TimeUnitElaTime = 'hours'
-        ElapsedTime = ElapsedTime / 3600
-    #Round the times to the nearest 0.1
-    AverageComputeTime = int(AverageComputeTime/1) + round(AverageComputeTime - int(AverageComputeTime/1),1)
-    EstimatedTimeRemaining = int(EstimatedTimeRemaining/1) + round(EstimatedTimeRemaining - int(EstimatedTimeRemaining/1),1)
-    ElapsedTime = int(ElapsedTime/1) + round(ElapsedTime - int(ElapsedTime/1), 1)
+    AllCosts = []
+    AllResults = []
+    AllCRs = []
+    'AllResults = [max_acc, max_disp, total_weight, period, basesh, CrX, CrY]. AllResults list is a list of lists. Each list is for a different GM'
+    TowerNum = 1
+    ComputeTimes = []
 
-    # Add cost to scatter plot
-    xdata.append(TowerNum)
+    # Define load cases
+    '''
+    gm1_Steps = ExcelIndex['GM1 time steps']
+    gm1_Intervals = ExcelIndex['GM1 time interval']
+    gm2_Steps = ExcelIndex['GM2 time steps']
+    gm2_Intervals = ExcelIndex['GM2 time interval']
+    SapModel = define_loading(SapModel, TimeHistoryLoc1, TimeHistoryLoc2, gm1_Steps, gm1_Intervals,
+                              gm2_Steps, gm2_Intervals, SaveLoc)
+    '''
+
+    # Start scatter plot of FABI
+    plt.ion()
+    fig = plt.figure()
+    ax = plt.subplot(1,1,1)
+    ax.set_xlabel('Tower Number')
     if RunGMs:
-        ydata.append(AllCosts[TowerNum-1][0] + AllCosts[TowerNum-1][1])
-    if not RunGMs:
-        ydata.append(AllResults[TowerNum-1][0][3])
-    ax.lines[0].set_data(xdata,ydata)
-    ax.relim()
-    ax.autoscale_view()
-    plt.xticks(numpy.arange(min(xdata), max(xdata)+1, 1.0))
-    plt.title('Average time per tower: ' + str(AverageComputeTime) + ' seconds\n' + 'Estimated time remaining: ' + str(EstimatedTimeRemaining) + ' ' + TimeUnitEstTime + '\nElapsed time so far: ' + str(ElapsedTime) + ' ' + TimeUnitElaTime)
-    fig.canvas.flush_events()
+        ax.set_ylabel('Total Cost')
+    elif not RunGMs:
+        ax.set_ylabel('Period')
+    xdata = []
+    ydata = []
+    ax.plot(xdata, ydata, 'ro', markersize=6)
+    plt.grid(True)
 
-    # Increment tower number
-    TowerNum += 1
-    LastTower = Tower
-    MembersAddedLast = MembersAdded
+    plt.show(block=False)
 
-print('\n\nFinished constructing all towers.')
+    # Initialize results spreadsheet
+    Filepath = SaveLoc + '/Results.xlsx'
+    WbResults = openpyxl.Workbook()
+    WbResults.save(Filepath)
 
-# Close SAP2000
-print('Closing SAP2000...')
-SapObject.ApplicationExit(False)
-print('FINISHED.')
-plt.show(block=True)
+    # Build all towers defined in spreadsheet
+    LastTower = None
+    MembersAddedLast = []
+    EliminatedMembers = []
+    for Tower in AllTowers:
+        MembersAdded = []
+        #Unlock model
+        SapModel.SetModelIsLocked(False)
+
+        StartTime = time.time()
+        print('\nBuilding tower number ' + str(TowerNum))
+        print('-------------------------')
+
+        # Delete all members within the plans and build correct bracing scheme
+        kip_in_F = 3
+        SapModel.SetPresentUnits(kip_in_F)
+
+        # Get list of members to not delete
+        MembersToKeep = []
+        '''
+        ret = SapModel.SelectObj.Group('MEMBERS TO KEEP')
+        if ret == 0:
+            [ret, NumberItems, ObjectTypes, ObjectNames] = SapModel.SelectObj.GetSelected()
+            SapModel.SelectObj.ClearSelection()
+        i = 0
+        for Object in ObjectNames:
+            if ObjectTypes[i] == 3:
+                MembersToKeep.append(Object)
+            i += 1
+        '''
+        if len(MembersAddedLast) != 0: #And the configuration is the same as the last tower
+            print('Deleting members created in last iteration...')
+            SapModel, MembersDeleted = delete_within_panel(SapModel, Panel, MembersToKeep, MembersAddedLast)
+
+        for PanelNum in Tower.panels:
+            BracingNum = Tower.panels[PanelNum]
+            BracingScheme = Bracing[BracingNum - 1]
+            Panel = Panels[PanelNum - 1]
+            if len(MembersAddedLast) == 0: # or the configuration is different from the last tower
+                print('Deleting members within panel ' + str(PanelNum) + '...')
+                SapModel, MembersDeleted = delete_within_panel(SapModel, Panel, MembersToKeep)
+            print('Building bracing scheme within panel ' + str(PanelNum) + "...")
+            SapModel, MembersAddedPanel = build_bracing_in_panel(SapModel, Panel, BracingScheme)
+            MembersAdded.extend(MembersAddedPanel)
+
+        # Change the section properties of specified members
+        print('\nChanging section properties of specified members...')
+        for MemberToChange in Tower.members:
+            NewSecProp = Tower.members[MemberToChange]
+            print('Changed section of member ' + str(MemberToChange))
+            ret = SapModel.FrameObj.SetSection(str(MemberToChange), NewSecProp, 0)
+            if ret != 0 and MemberToChange in EliminatedMembers:
+                print('ERROR changing section of member ' + str(MemberToChange) + '. Member was previously eliminated.')
+            elif ret != 0:
+                print('ERROR changing section of member ' + str(MemberToChange))
+
+        # Set base nodes to fixed
+        SapModel = set_base_restraints(SapModel)
+
+        '''
+        # Join frame members if they are collinear and have the same section property. Prevents SAP2000 from indicating the model as unstable
+        # !!!!!!WARNING!!!!!! This does not check whether joints have masses assigned to them (SAP API is dumb and it's not working for some reason).
+        # Make sure that all nodes with masses have more than one frame member attached
+        NumOfFrameJoins = 0
+        [ret, NumberPoints, AllPointNames] = SapModel.PointObj.GetNameList()
+        print('\nDeleting unnecessary joints...')
+        for PointName in AllPointNames:
+            # Check joint load
+            [ret, NumberLoadAssigns, PointNameFromSAP, LoadPat, LCStep, CSys, F1, F2, F3, M1, M2, M3] = SapModel.PointObj.GetLoadForce(PointName)
+            if ret != 0:
+                print('ERROR getting load assignment at joint ' + PointName)
+            # Get joint connectivity
+            [ret, NumberItems, ObjectTypes, ObjectNames, PointNumber] = SapModel.PointObj.GetConnectivity(PointName)
+            if ret != 0:
+                print('ERROR getting connectivity of point ' + PointName)
+            # If all criteria met, delete joint
+            if NumberItems == 2 and ObjectTypes[0] == 2 and ObjectTypes[1] == 2 and NumberLoadAssigns == 0:
+                [ret, Frame1Section, SAuto] = SapModel.FrameObj.GetSection(ObjectNames[0])
+                [ret, Frame2Section, SAuto] = SapModel.FrameObj.GetSection(ObjectNames[1])
+                if Frame1Section == Frame2Section:
+                    ret = SapModel.EditFrame.Join(ObjectNames[0], ObjectNames[1])
+                    EliminatedMembers.append(ObjectNames[1])
+                    if ret == 0:
+                        NumOfFrameJoins += 1
+        print('Joined ' + str(NumOfFrameJoins) + ' members')
+        '''
+
+        # Save the file
+        SapModel.File.Save(SaveLoc + '/Tower ' + str(TowerNum))
+        # Analyse tower and print results to spreadsheet
+        print('\nAnalyzing tower number ' + str(TowerNum))
+        print('-------------------------')
+        # Run analysis and get weight, displacement, and acceleration
+        # ret = SapModel.Analyze.SetSolverOption_1(0, 0, False)
+        AllResults.append(run_analysis(SapModel, RunGMs))
+        if RunGMs:
+            MaxAcc = AllResults[TowerNum-1][0][0]
+            MaxDisp = AllResults[TowerNum-1][0][1]
+            Weight = AllResults[TowerNum-1][0][2]
+            # Calculate model cost
+            Footprint = 144
+            TotalHeight = [60] # inches
+            TotalMass = [7.83] # kg
+            AllCosts.append(get_costs(MaxAcc, MaxDisp, Footprint, Weight, TotalMass, TotalHeight))
+        if not RunGMs:
+            AllCosts.append(['bldg cost not calculated', 'seismic cost not calculated'])
+        # Find centres of rigidity
+        SapModel.SetModelIsLocked(False)
+        AllCRs.append(get_CR(SapModel, CRElevs))
+        # Write results to Excel spreadsheet
+        write_to_excel(WbResults, Filepath, AllCosts, AllResults, AllCRs, RunGMs, TowerNum)
+        # Unlock model
+        SapModel.SetModelIsLocked(False)
+
+        # Determine total time taken to build current tower
+        EndTime = time.time()
+        TimeToComputeTower = EndTime - StartTime
+        ComputeTimes.append(TimeToComputeTower)
+        AverageComputeTime = sum(ComputeTimes) / len(ComputeTimes)
+        ElapsedTime = sum(ComputeTimes)
+        EstimatedTimeRemaining = (len(AllTowers) - TowerNum) * AverageComputeTime
+        if EstimatedTimeRemaining <= 60:
+            TimeUnitEstTime = 'seconds'
+        elif EstimatedTimeRemaining > 60 and EstimatedTimeRemaining < 3600:
+            TimeUnitEstTime = 'minutes'
+            EstimatedTimeRemaining = EstimatedTimeRemaining / 60
+        else:
+            TimeUnitEstTime = 'hours'
+            EstimatedTimeRemaining = EstimatedTimeRemaining / 3600
+
+        if ElapsedTime <= 60:
+            TimeUnitElaTime = 'seconds'
+        elif ElapsedTime > 60 and ElapsedTime < 3600:
+            TimeUnitElaTime = 'minutes'
+            ElapsedTime = ElapsedTime / 60
+        else:
+            TimeUnitElaTime = 'hours'
+            ElapsedTime = ElapsedTime / 3600
+        #Round the times to the nearest 0.1
+        AverageComputeTime = int(AverageComputeTime/1) + round(AverageComputeTime - int(AverageComputeTime/1),1)
+        EstimatedTimeRemaining = int(EstimatedTimeRemaining/1) + round(EstimatedTimeRemaining - int(EstimatedTimeRemaining/1),1)
+        ElapsedTime = int(ElapsedTime/1) + round(ElapsedTime - int(ElapsedTime/1), 1)
+
+        # Add cost to scatter plot
+        xdata.append(TowerNum)
+        if RunGMs:
+            ydata.append(AllCosts[TowerNum-1][0] + AllCosts[TowerNum-1][1])
+        if not RunGMs:
+            ydata.append(AllResults[TowerNum-1][0][3])
+        ax.lines[0].set_data(xdata,ydata)
+        ax.relim()
+        ax.autoscale_view()
+        plt.xticks(numpy.arange(min(xdata), max(xdata)+1, 1.0))
+        plt.title('Average time per tower: ' + str(AverageComputeTime) + ' seconds\n' + 'Estimated time remaining: ' + str(EstimatedTimeRemaining) + ' ' + TimeUnitEstTime + '\nElapsed time so far: ' + str(ElapsedTime) + ' ' + TimeUnitElaTime)
+        fig.canvas.flush_events()
+
+        # Increment tower number
+        TowerNum += 1
+        LastTower = Tower
+        MembersAddedLast = MembersAdded
+
+    print('\n\nFinished constructing all towers.')
+
+    # Close SAP2000
+    print('Closing SAP2000...')
+    #SapObject.ApplicationExit(False)
+    print('FINISHED.')
+    #plt.show(block=True)
+    plt.close('all')
+
 
